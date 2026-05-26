@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>発注 ⇒ ピッキング システム</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#1a1a1a;background:#f5f5f7}
+.app{display:flex;height:100vh}
+.sidebar{width:182px;background:#fff;border-right:1px solid #e8e8e8;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+.sidebar-logo{padding:14px;font-size:14px;font-weight:600;border-bottom:1px solid #e8e8e8;color:#1a1a1a}
+.sidebar-logo span{color:#D85A30}
+.sync-bar{padding:6px 14px;font-size:10px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #e8e8e8;cursor:pointer}
+.sync-bar:hover{background:#f9f9f9}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#aaa}
+.dot.ok{background:#4CAF50}.dot.err{background:#E53935}.dot.spin{background:#FB8C00;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.nav-section{padding:4px 0}
+.nav-label{padding:5px 14px;font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.06em}
+.nav-item{padding:8px 14px;cursor:pointer;font-size:12px;color:#666;border-left:2px solid transparent;transition:.1s}
+.nav-item:hover{background:#f5f5f7;color:#1a1a1a}
+.nav-item.active{background:#f5f5f7;color:#D85A30;border-left-color:#D85A30;font-weight:500}
+.main{flex:1;overflow:auto;display:flex;flex-direction:column;min-width:0}
+.topbar{background:#fff;border-bottom:1px solid #e8e8e8;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-shrink:0;position:sticky;top:0;z-index:20}
+.topbar h1{font-size:13px;font-weight:500;flex:1}
+.content{padding:14px;flex:1}
+.screen{display:none}.screen.active{display:block}
+.btn{padding:5px 12px;border:1px solid #ddd;border-radius:7px;background:#fff;cursor:pointer;font-size:12px;color:#333;transition:.1s}
+.btn:hover{background:#f5f5f7}
+.btn-primary{background:#D85A30;color:#fff;border-color:#D85A30}.btn-primary:hover{background:#993C1D}
+.btn-sm{padding:3px 8px;font-size:11px}
+.btn-blue{background:#1565C0;color:#fff;border-color:#1565C0;font-size:12px;padding:6px 14px}.btn-blue:hover{background:#0D47A1}
+.btn-edit{color:#1565C0;border-color:#B5D4F4;font-size:11px;padding:3px 8px}.btn-edit:hover{background:#E6F1FB}
+.btn-danger{color:#A32D2D;border-color:#F7C1C1;font-size:11px;padding:3px 8px}.btn-danger:hover{background:#FCEBEB}
+.btn-gray{background:#f5f5f5;border-color:#ddd;color:#555}.btn-gray:hover{background:#eee}
+input[type=text],select{height:28px;font-size:12px;border:1px solid #ddd;border-radius:7px;padding:0 8px;background:#fff;color:#1a1a1a;width:100%}
+input[type=text]:focus,select:focus{outline:none;border-color:#D85A30}
+.card{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:12px;margin-bottom:12px}
+.card-title{font-size:11px;font-weight:500;margin-bottom:8px;color:#888}
+.badge-ok{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:500;background:#EAF3DE;color:#2E7D32}
+/* company buttons */
+.company-btn{padding:6px 14px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;margin-right:6px;margin-bottom:6px;transition:.1s}
+.company-btn.active,.company-btn:hover{background:#FAECE7;border-color:#D85A30;color:#993C1D}
+/* shop grid */
+.shop-hdr{display:flex;align-items:center;gap:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #eee}
+.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));border:1px solid #e8e8e8;border-radius:10px;overflow:hidden;margin-bottom:4px}
+.shop-item{padding:10px 12px;border-bottom:1px solid #eee;cursor:pointer;transition:.1s}
+.shop-item:hover{background:#f9f9f9}
+.shop-item.ordered{background:#F1F8E9}
+.shop-item:last-child{border-bottom:none}
+.shop-name{font-weight:500;font-size:13px}
+.shop-code{font-size:11px;color:#999;margin-top:1px}
+.tag-ok{font-size:9px;padding:1px 5px;background:#EAF3DE;color:#2E7D32;border-radius:3px;margin-top:3px;display:inline-block}
+.sbox{height:28px;font-size:12px;border:1px solid #ddd;border-radius:7px;padding:0 8px;background:#fff;color:#1a1a1a;width:180px}
+/* ORDER WRAP — sticky header + scroll body + sticky footer */
+.owrap{background:#fff;border:1px solid #ddd;border-radius:10px;overflow:hidden;margin-top:14px;display:flex;flex-direction:column;max-height:calc(100vh - 90px)}
+.o-sticky-top{position:sticky;top:0;z-index:10;background:#fff;flex-shrink:0}
+.ohdr{background:#C0482A;color:#fff;padding:0 14px;height:46px;display:flex;align-items:center;gap:10px}
+.ohdr-title{font-size:13px;font-weight:500;flex:1}
+.wnav{display:flex;align-items:center;gap:6px}
+.nbtn{width:28px;height:28px;border:1px solid rgba(255,255,255,.4);border-radius:6px;background:transparent;color:#fff;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.nbtn:hover{background:rgba(255,255,255,.2)}
+.wlbl{font-size:12px;min-width:88px;text-align:center}
+.day-selector{display:flex;gap:6px;padding:10px 14px;background:#f8f8f8;border-bottom:1px solid #e8e8e8;overflow-x:auto}
+.day-btn{flex-shrink:0;width:60px;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;padding:7px 4px;text-align:center;position:relative;transition:.12s}
+.day-btn:hover{border-color:#D85A30;background:#FFF5F2}
+.day-btn.active{border-color:#D85A30;background:#D85A30;color:#fff}
+.day-btn.has-order{border-color:#4CAF50;background:#F1F8E9}
+.day-btn.active.has-order{background:#D85A30;color:#fff;border-color:#D85A30}
+.day-btn.past{background:#f9f9f9;color:#bbb;cursor:default}
+.day-btn.past:hover{border-color:#ddd;background:#f9f9f9}
+.day-btn.today-d{border-color:#FB8C00}
+.day-btn .dn{font-size:11px;font-weight:600;display:block}
+.day-btn .dd{font-size:10px;display:block;margin-top:1px;opacity:.8}
+.day-btn .d-dot{width:5px;height:5px;border-radius:50%;background:#4CAF50;position:absolute;top:4px;right:4px}
+.day-btn.active .d-dot,.day-btn.past .dn,.day-btn.past .dd{color:#ccc}
+.day-btn.active .d-dot{background:#fff}
+/* banners */
+.bn-done{background:#EAF3DE;border-bottom:1px solid #A5D6A7;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+.bn-done-l{display:flex;align-items:center;gap:10px;font-size:12px;color:#2E7D32}
+.bn-edit{background:#FFF3E0;border-bottom:1px solid #FFB74D;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#E65100}
+.bn-new{background:#E3F2FD;border-bottom:1px solid #90CAF9;padding:10px 14px;font-size:12px;color:#1565C0}
+.bn-lock{background:#f5f5f5;border-bottom:1px solid #e0e0e0;padding:10px 14px;font-size:12px;color:#888}
+/* scrollable body */
+.o-body{overflow-y:auto;flex:1}
+/* table */
+.col-hdr{display:grid;background:#f8f8f8;border-bottom:1px solid #e8e8e8}
+.ch{padding:7px 8px;text-align:center;font-size:11px;font-weight:600;color:#666;border-right:1px solid #e8e8e8}
+.ch:last-child{border-right:none}
+.ch.nch{text-align:left;padding-left:14px}
+.grow{background:#FAECE7;padding:6px 14px;font-size:11px;font-weight:600;color:#993C1D;border-bottom:1px solid #F5C4B3;border-top:1px solid #F5C4B3}
+.prow{display:grid;border-bottom:1px solid #eee;align-items:stretch;min-height:38px}
+.prow:last-child{border-bottom:none}
+.prow:hover{background:#fafafa}
+.cname{padding:6px 14px;font-size:12px;border-right:1px solid #eee;display:flex;align-items:center}
+.cunit{padding:4px 6px;text-align:center;font-size:12px;font-weight:500;color:#555;border-right:1px solid #eee;display:flex;align-items:center;justify-content:center;width:88px}
+.cqty{padding:4px 6px;display:flex;align-items:center;justify-content:center}
+.vval{width:100%;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#ccc;border-radius:5px}
+.vval.has{background:#EAF3DE;color:#1B5E20;font-weight:700;border:1px solid #C8E6C9;font-size:14px}
+.cqty input[type=number]{width:100%;height:28px;text-align:center;font-size:13px;border:1px solid #d0d0d0;border-radius:5px;background:#fff;padding:0;-moz-appearance:textfield}
+.cqty input[type=number]::-webkit-inner-spin-button,.cqty input[type=number]::-webkit-outer-spin-button{opacity:1;height:24px}
+.cqty input[type=number]:focus{outline:none;border-color:#D85A30;box-shadow:0 0 0 2px rgba(216,90,48,.15)}
+.cqty.lck{background:#f9f9f9}
+.cqty.lck input[type=number]{background:#f3f3f3;color:#bbb;border-color:#e8e8e8}
+/* sticky footer */
+.o-sticky-footer{position:sticky;bottom:0;z-index:10;background:#fff;border-top:1px solid #e8e8e8;flex-shrink:0}
+.oftr{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.oftr-v{padding:10px 14px;display:flex;justify-content:space-between;align-items:center;background:#fafafa}
+/* master/other */
+.tabs{display:flex;border-bottom:1px solid #e8e8e8;margin-bottom:12px}
+.tab{padding:8px 16px;cursor:pointer;font-size:12px;color:#888;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.1s}
+.tab.active{color:#D85A30;border-bottom-color:#D85A30;font-weight:500}
+.tc{display:none}.tc.active{display:block}
+.mwrap{border:1px solid #e8e8e8;border-radius:10px;overflow:hidden;margin-top:10px}
+.mtbl{width:100%;border-collapse:collapse;font-size:12px}
+.mtbl thead tr{background:#f8f8f8;border-bottom:1px solid #e8e8e8}
+.mtbl th{padding:8px 10px;text-align:left;font-weight:500;color:#666;border-right:1px solid #eee;white-space:nowrap}
+.mtbl th:last-child{border-right:none}
+.mtbl tbody tr{border-bottom:1px solid #f0f0f0}
+.mtbl tbody tr:last-child{border-bottom:none}
+.mtbl tbody tr:hover{background:#fafafa}
+.mtbl td{padding:7px 10px;border-right:1px solid #f0f0f0;vertical-align:middle}
+.mtbl td:last-child{border-right:none}
+.rn{color:#bbb;font-size:11px;text-align:center;width:30px}
+.cc{font-family:monospace;font-size:11px;color:#666}
+.fg{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+.fl{font-size:11px;color:#888}
+.fr{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px}
+.trow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.dlbl{width:54px;font-size:12px;font-weight:500}
+.sc{background:#f5f5f7;border-radius:8px;padding:10px 14px}
+.sl{font-size:11px;color:#888;margin-bottom:2px}
+.sv{font-size:22px;font-weight:600}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.modal-bg{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:#fff;border-radius:14px;padding:28px 24px;width:420px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.18)}
+.mico{font-size:36px;margin-bottom:12px;text-align:center}
+.mhd{font-size:15px;font-weight:600;text-align:center;margin-bottom:6px}
+.msb{font-size:12px;color:#888;text-align:center;margin-bottom:20px;line-height:1.6}
+.mac{display:flex;gap:10px;justify-content:center}
+.mac .btn{min-width:100px;font-size:13px;padding:8px 16px}
+.rico{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px}
+.rico.ok{background:#EAF3DE}.rico.ng{background:#FCEBEB}
+.dbox{background:#f8f8f8;border:1px solid #eee;border-radius:8px;padding:12px 14px;font-size:12px;color:#555;margin-bottom:20px;line-height:1.8}
+.mtitle{font-size:14px;font-weight:600;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eee}
+.lov{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.9);z-index:300;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.lov.open{display:flex}
+.spinner{width:36px;height:36px;border:3px solid #eee;border-top-color:#D85A30;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lov-msg{font-size:13px;color:#666;font-weight:500}
+.upload-zone{border:2px dashed #ddd;border-radius:8px;padding:14px;text-align:center;cursor:pointer;background:#fafafa;transition:.1s}
+.upload-zone:hover{border-color:#D85A30;background:#FFF5F2}
+.upload-zone input{display:none}
+.upload-zone p{font-size:12px;color:#999;margin-top:4px}
+.preview-scroll{max-height:180px;overflow-y:auto;border:1px solid #eee;border-radius:6px;margin-top:8px}
+.preview-scroll table{width:100%;border-collapse:collapse;font-size:11px}
+.preview-scroll th{background:#f5f5f5;padding:5px 8px;border-bottom:1px solid #ddd;position:sticky;top:0;font-weight:500;color:#666;text-align:left;white-space:nowrap}
+.preview-scroll td{padding:4px 8px;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+.col-map{display:grid;gap:6px;margin:10px 0}
+.col-map-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.col-map-lbl{width:90px;color:#555;font-weight:500;flex-shrink:0}
+.col-map-row select{height:26px;font-size:12px;flex:1}
+.alert-info{padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:10px;background:#E3F2FD;color:#1565C0;border:1px solid #90CAF9}
+
+/* ═══════════════════════════════════
+   RESPONSIVE — Phone / Tablet / PC
+═══════════════════════════════════ */
+
+/* Hamburger menu button (mobile only) */
+.hamburger{display:none;width:36px;height:36px;background:none;border:none;cursor:pointer;flex-direction:column;justify-content:center;align-items:center;gap:5px;padding:4px;border-radius:6px}
+.hamburger:hover{background:#f0f0f0}
+.hamburger span{display:block;width:20px;height:2px;background:#333;border-radius:2px;transition:.25s}
+.sidebar-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:99}
+.sidebar-overlay.open{display:block}
+
+/* ── TABLET (≤ 900px) ── */
+@media (max-width:900px){
+  .sidebar{width:160px}
+  .content{padding:10px}
+  .owrap{max-height:calc(100vh - 80px)}
+}
+
+/* ── PHONE (≤ 600px) ── */
+@media (max-width:600px){
+  /* Sidebar becomes slide-in drawer */
+  .sidebar{
+    position:fixed;top:0;left:-200px;width:200px;height:100%;
+    z-index:100;transition:left .25s ease;box-shadow:none
+  }
+  .sidebar.open{left:0;box-shadow:4px 0 20px rgba(0,0,0,.15)}
+  .hamburger{display:flex}
+
+  /* Topbar */
+  .topbar{padding:8px 12px;gap:6px}
+  .topbar h1{font-size:13px}
+  #sheets-ok{display:none!important}
+
+  /* Content */
+  .content{padding:8px}
+
+  /* Company buttons */
+  .company-btn{padding:7px 12px;font-size:13px;margin-bottom:8px}
+
+  /* Shop grid — 2 columns on phone */
+  .shop-grid{grid-template-columns:repeat(2,1fr)}
+  .shop-item{padding:10px 10px}
+  .shop-name{font-size:13px}
+
+  /* Order wrap — full height */
+  .owrap{max-height:calc(100vh - 60px);margin-top:8px;border-radius:8px}
+
+  /* Order header */
+  .ohdr{height:auto;padding:10px 12px;flex-wrap:wrap;gap:6px}
+  .ohdr-title{font-size:13px;width:100%}
+  .wnav{width:100%;justify-content:center}
+  .wlbl{font-size:13px;min-width:100px}
+  .nbtn{width:32px;height:32px;font-size:15px}
+
+  /* Day selector — scrollable, bigger buttons */
+  .day-selector{padding:8px 10px;gap:5px}
+  .day-btn{width:52px;padding:8px 2px}
+  .day-btn .dn{font-size:12px}
+  .day-btn .dd{font-size:11px}
+
+  /* Banners */
+  .bn-done{flex-direction:column;gap:8px;align-items:flex-start}
+  .bn-edit{flex-direction:column;gap:6px;align-items:flex-start}
+
+  /* Table columns — wider qty on phone */
+  /* Override COLS via CSS */
+  .col-hdr,.prow{grid-template-columns:1fr 60px 90px!important}
+  .cunit{width:60px!important;font-size:11px}
+  .cname{padding:8px 10px;font-size:13px}
+  .cqty input[type=number]{height:34px;font-size:15px}
+  .vval{height:34px;font-size:15px}
+  .vval.has{font-size:16px}
+
+  /* Footer buttons — bigger touch targets */
+  .oftr{padding:10px 12px}
+  .oftr-v{padding:10px 12px}
+  .btn-primary{padding:10px 20px;font-size:14px}
+  .btn-danger{padding:8px 12px;font-size:12px}
+  .btn-blue{padding:10px 16px;font-size:13px}
+
+  /* Modals — full width */
+  .modal{width:calc(100vw - 24px);padding:20px 16px;margin:0 12px}
+
+  /* Master tables — scrollable */
+  .mwrap{overflow-x:auto}
+
+  /* Admin URL input */
+  #gasurl{font-size:10px}
+
+  /* Back button */
+  .btn-gray{padding:8px 14px;font-size:13px}
+
+  /* History table — compact */
+  .mtbl td,.mtbl th{padding:6px 6px;font-size:11px}
+}
+
+/* ── LARGE TABLET / iPad (601px - 900px) ── */
+@media (min-width:601px) and (max-width:900px){
+  .sidebar{width:170px}
+  .shop-grid{grid-template-columns:repeat(3,1fr)}
+  .day-btn{width:56px}
+  .cqty input[type=number]{height:32px;font-size:14px}
+  .btn-primary{padding:8px 16px;font-size:13px}
+}
+
+
+/* ── PICKING / LABEL / GROSS ── */
+.label-card-print{width:85mm;height:46mm;border:2px solid #222;border-radius:4px;padding:4px 8px;overflow:hidden;display:flex;flex-direction:column;background:#fff;font-family:sans-serif;flex-shrink:0;gap:1px}
+.lc-date{font-size:10px;font-weight:700;color:#111;border-bottom:1.5px solid #222;padding-bottom:2px;margin-bottom:1px}
+.lc-co-label{font-size:9px;color:#555;font-weight:600;line-height:1.2}
+.lc-co-val{font-size:18px;font-weight:800;color:#111;padding-left:6px;line-height:1.2}
+.lc-store-label{font-size:9px;color:#555;font-weight:600;line-height:1.2}
+.lc-store-val{font-size:18px;font-weight:800;color:#111;padding-left:6px;line-height:1.2}
+.lc-prod-label{font-size:9px;color:#555;font-weight:600;line-height:1.2}
+.lc-prod-val{font-size:11px;font-weight:700;color:#1565C0;padding-left:6px;line-height:1.2}
+.lc-qty-row{display:flex;align-items:baseline;gap:5px;margin-top:3px;border-top:1px solid #ddd;padding-top:2px}
+.lc-qty{font-size:20px;font-weight:900;color:#111;line-height:1}
+.lc-unit{font-size:11px;font-weight:700;color:#444;line-height:1}
+.pick-table{border-collapse:collapse;width:100%;font-size:12px}
+.pick-table th{background:#e8f0fe;border:1px solid #aaa;padding:5px 6px;font-weight:600;text-align:center;white-space:nowrap}
+.pick-table td{border:1px solid #ddd;padding:4px 6px;text-align:center}
+.pick-table td.name-col{text-align:left;font-weight:500}
+.pick-table tfoot td{background:#f0f0f0;font-weight:700}
+.pick-table .total-col{background:#fffbe6;font-weight:700}
+.gross-table{border-collapse:collapse;width:100%;font-size:12px}
+.gross-table th{background:#e8f0fe;border:1px solid #aaa;padding:5px 6px;font-weight:600;text-align:center;white-space:nowrap}
+.gross-table td{border:1px solid #ddd;padding:4px 6px;text-align:center}
+.gross-table td.name-col{text-align:left;font-weight:500;min-width:120px}
+.gross-table tfoot td{background:#f0f0f0;font-weight:700}
+.gross-table .total-col{background:#e8f0fe;font-weight:700}
+
+</style>
+</head>
+<body>
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+<div class="app">
+<div class="sidebar">
+  <div class="sidebar-logo">発注 <span>⇒</span> ピッキング</div>
+  <div class="sync-bar" id="sync-bar" onclick="loadAll()">
+    <div class="dot spin" id="sdot"></div>
+    <span id="stxt" style="color:#888">接続中...</span>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">メイン</div>
+    <div class="nav-item active" onclick="showScreen('order',this)">📋 発注</div>
+    <div class="nav-item" onclick="showScreen('history',this)">📦 発注履歴</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">管理</div>
+    <div class="nav-item" onclick="showScreen('master',this)">🗂 マスタ管理</div>
+    <div class="nav-item" onclick="showScreen('admin',this)">⚙️ 設定</div>
+    <div class="nav-item" onclick="showScreen('export',this)">📊 データ出力</div>
+    <div class="nav-item" onclick="showScreen('picking',this)">📦 ピッキングリスト</div>
+    <div class="nav-item" onclick="showScreen('label',this)">🏷️ 店舗ラベル</div>
+    <div class="nav-item" onclick="showScreen('gross',this)">📅 グロス表</div>
+  </div>
+</div>
+<div class="main">
+<div class="topbar">
+  <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+  <h1 id="ptitle">発注</h1>
+  <span style="font-size:11px;color:#888" id="twk"></span>
+  <span id="sheets-ok" style="display:none;font-size:11px;background:#EAF3DE;color:#2E7D32;border:1px solid #A5D6A7;border-radius:5px;padding:2px 8px">✅ Sheets</span>
+</div>
+<div class="content">
+
+<!-- ORDER -->
+<div id="screen-order" class="screen active">
+  <div class="alert-info">会社を選択してから店舗を選んでください</div>
+  <div class="card"><div class="card-title">社名</div><div id="cobtns"></div></div>
+
+  <!-- shop section: hidden when order form is open -->
+  <div id="shopsec" style="display:none">
+    <div class="shop-hdr">
+      <div style="font-size:12px;color:#888">店舗 — <span id="selco" style="color:#D85A30;font-weight:500"></span></div>
+      <input class="sbox" type="text" placeholder="店舗を検索..." oninput="filterShops(this.value)">
+      <button class="btn btn-sm btn-gray" onclick="backToShops()" style="margin-left:auto">← 戻る</button>
+    </div>
+    <div id="shopgrid" class="shop-grid"></div>
+  </div>
+
+  <!-- order form -->
+  <div id="orderform" style="display:none">
+    <div class="owrap">
+      <div class="o-sticky-top">
+        <div class="ohdr">
+          <span class="ohdr-title">📋 <strong id="hshop"></strong> <span style="font-size:11px;opacity:.75;font-weight:400" id="hcode"></span></span>
+          <div class="wnav">
+            <button class="nbtn" onclick="changeWeek(-1)">◀</button>
+            <span class="wlbl" id="hwk"></span>
+            <button class="nbtn" onclick="changeWeek(1)">▶</button>
+          </div>
+        </div>
+        <div class="day-selector" id="day-selector"></div>
+        <div id="order-banner"></div>
+      </div>
+      <div class="o-body"><div id="oinner"></div></div>
+      <div class="o-sticky-footer" id="order-footer"></div>
+    </div>
+    <div style="margin-top:10px">
+      <button class="btn btn-gray btn-sm" onclick="backToShops()">← 店舗一覧に戻る</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div id="screen-history" class="screen">
+  <div class="card">
+    <div class="card-title">発注履歴</div>
+    <div class="fr" style="margin-bottom:10px">
+      <div class="fg" style="margin:0"><div class="fl">社名</div>
+        <select id="hco" onchange="renderHistory()" style="width:160px"><option value="">全て</option></select>
+      </div>
+      <button class="btn btn-sm" onclick="loadAll()" style="margin-left:auto">🔄 再読込</button>
+    </div>
+    <div class="mwrap"><table class="mtbl"><thead><tr><th>週</th><th>社名</th><th>店名</th><th>日付</th><th>状態</th><th>更新時間</th><th>操作</th></tr></thead>
+    <tbody id="htbody"></tbody></table></div>
+  </div>
+</div>
+
+<!-- MASTER -->
+<div id="screen-master" class="screen">
+  <div class="tabs">
+    <div class="tab active" onclick="stab('shops',this)">🏪 店舗マスタ</div>
+    <div class="tab" onclick="stab('products',this)">🥬 商品マスタ</div>
+  </div>
+  <div class="tc active" id="tab-shops">
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-title">📤 Excel アップロード（店舗マスタ）</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#FAECE7;border:1px solid #D85A30;border-radius:7px;font-size:12px;font-weight:500;color:#D85A30">
+          📁 Excelアップロード<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this,'shops')">
+        </label>
+        <span style="font-size:11px;color:#999">対応: .xlsx/.xls/.csv　列: 店舗コード、店名、社名、備考</span>
+      </div>
+      <div id="shop-preview" style="display:none">
+        <div style="margin-top:10px;font-size:12px;font-weight:500;color:#555">列マッピング</div>
+        <div class="col-map" id="shop-colmap"></div>
+        <div class="preview-scroll" id="shop-preview-tbl"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <span id="shop-preview-count" style="font-size:12px;color:#888"></span>
+          <button class="btn btn-primary btn-sm" onclick="applyShopImport()">✅ インポート</button>
+          <button class="btn btn-sm btn-gray" onclick="cancelImport('shops')">キャンセル</button>
+        </div>
+      </div>
+    </div>
+    <div class="fr">
+      <input class="sbox" type="text" placeholder="検索..." oninput="renderMasterShops(this.value)">
+      <button class="btn btn-sm" onclick="syncShops()">☁️ Sheets同期</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddShop()">+ 追加</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteAllShops()" style="margin-left:auto">🗑 全て削除</button>
+    </div>
+    <div class="mwrap"><table class="mtbl"><thead><tr><th class="rn">#</th><th>コード</th><th>店名</th><th>社名</th><th>備考</th><th style="text-align:center">操作</th></tr></thead><tbody id="shopstbl"></tbody></table></div>
+    <div id="shopscnt" style="font-size:11px;color:#999;margin-top:6px"></div>
+  </div>
+  <div class="tc" id="tab-products">
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-title">📤 Excel アップロード（商品マスタ）</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:#FAECE7;border:1px solid #D85A30;border-radius:7px;font-size:12px;font-weight:500;color:#D85A30">
+          📁 Excelアップロード<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFile(this,'products')">
+        </label>
+        <span style="font-size:11px;color:#999">対応: .xlsx/.xls/.csv　列: コード、商品名、単位、ス単位</span>
+      </div>
+      <div id="prod-preview" style="display:none">
+        <div style="margin-top:10px;font-size:12px;font-weight:500;color:#555">列マッピング</div>
+        <div class="col-map" id="prod-colmap"></div>
+        <div class="preview-scroll" id="prod-preview-tbl"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <span id="prod-preview-count" style="font-size:12px;color:#888"></span>
+          <button class="btn btn-primary btn-sm" onclick="applyProdImport()">✅ インポート</button>
+          <button class="btn btn-sm btn-gray" onclick="cancelImport('products')">キャンセル</button>
+        </div>
+      </div>
+    </div>
+    <div class="fr">
+      <input class="sbox" type="text" placeholder="検索..." oninput="renderMasterProducts(this.value)">
+      <button class="btn btn-sm" onclick="syncProducts()">☁️ Sheets同期</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddProduct()">+ 追加</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteAllProducts()" style="margin-left:auto">🗑 全て削除</button>
+    </div>
+    <div class="mwrap"><table class="mtbl"><thead><tr><th class="rn">#</th><th>コード</th><th>商品名</th><th style="width:60px">単位</th><th style="width:60px">ス単位</th><th style="text-align:center">操作</th></tr></thead><tbody id="prodtbl"></tbody></table></div>
+    <div id="prodcnt" style="font-size:11px;color:#999;margin-top:6px"></div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="screen-admin" class="screen">
+  <div class="card"><div class="card-title">⏰ 注文締め切り時間</div><div id="dlset"></div>
+  <div style="margin-top:10px"><button class="btn btn-primary" onclick="saveDL()">💾 保存</button></div></div>
+  <div class="card"><div class="card-title">☁️ Google Sheets 接続</div>
+  <div class="fg"><div class="fl">Web App URL</div><input type="text" id="gasurl" style="font-size:11px;font-family:monospace"></div>
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <button class="btn btn-primary btn-sm" onclick="saveUrl()">💾 保存 & テスト</button>
+    <button class="btn btn-sm" onclick="loadAll()">🔄 全データ再読込</button>
+  </div>
+  <div id="urlres" style="margin-top:6px;font-size:12px"></div></div>
+</div>
+
+<!-- EXPORT -->
+<div id="screen-export" class="screen">
+  <div class="g2">
+    <div class="sc"><div class="sl">注文済み</div><div class="sv" id="stat-orders">0</div></div>
+    <div class="sc"><div class="sl">対象店舗</div><div class="sv" id="stat-shops">0</div></div>
+  </div>
+  <div class="card"><div class="card-title">注文データ一覧</div>
+  <div class="mwrap" style="max-height:320px;overflow-y:auto">
+    <table class="mtbl"><thead><tr><th>週</th><th>日付</th><th>店舗コード</th><th>店名</th><th>社名</th><th>商品コード</th><th>商品名</th><th>数量</th><th>更新時間</th></tr></thead>
+    <tbody id="exptbl"></tbody></table></div>
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <button class="btn btn-primary" onclick="expCSV()">📊 CSV出力</button>
+    <button class="btn" onclick="expCopy()">📋 コピー</button>
+  </div></div>
+</div>
+
+<!-- PICKING LIST -->
+<div id="screen-picking" class="screen">
+  <div class="card">
+    <div class="card-title">📦 ピッキングリスト</div>
+    <div class="fr" style="margin-bottom:12px;align-items:center">
+      <div class="fg" style="margin:0"><div class="fl">日付フィルター</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="date" id="pick-date" onchange="renderPicking()" style="height:28px;font-size:12px;border:1px solid #ddd;border-radius:7px;padding:0 8px;background:#fff;color:#1a1a1a">
+          <button class="btn btn-gray btn-sm" onclick="document.getElementById('pick-date').value='';renderPicking()">全日付</button>
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="loadAll()" style="margin-left:auto">🔄 再読込</button>
+      <button class="btn btn-primary btn-sm" onclick="printPicking()">🖨️ 印刷</button>
+    </div>
+    <div id="picking-content" style="overflow-x:auto"></div>
+  </div>
+</div>
+
+<!-- STORE LABELS -->
+<div id="screen-label" class="screen">
+  <div class="card">
+    <div class="card-title">🏷️ 店舗ラベル <span style="font-size:11px;color:#888;font-weight:400">— 商品ごとに1枚</span></div>
+    <div class="fr" style="margin-bottom:12px;align-items:center">
+      <div class="fg" style="margin:0"><div class="fl">日付フィルター</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="date" id="label-date" onchange="renderLabels()" style="height:28px;font-size:12px;border:1px solid #ddd;border-radius:7px;padding:0 8px;background:#fff;color:#1a1a1a">
+          <button class="btn btn-gray btn-sm" onclick="document.getElementById('label-date').value='';renderLabels()">全日付</button>
+        </div>
+      </div>
+      <div class="fg" style="margin:0;margin-left:12px"><div class="fl">会社名フィルター</div>
+        <select id="label-co" onchange="renderLabels()" style="width:160px">
+          <option value="ALL">全会社</option>
+        </select>
+      </div>
+      <button class="btn btn-sm" onclick="loadAll()" style="margin-left:auto">🔄 再読込</button>
+      <button class="btn btn-primary btn-sm" onclick="printLabels()">🖨️ 印刷</button>
+    </div>
+    <div id="label-content" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+  </div>
+</div>
+
+<!-- GROSS TABLE -->
+<div id="screen-gross" class="screen">
+  <div class="card">
+    <div class="card-title">📅 出荷量グロス表</div>
+    <div class="fr" style="margin-bottom:12px;align-items:center">
+      <div class="fg" style="margin:0"><div class="fl">日付フィルター</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="date" id="gross-date" onchange="renderGross()" style="height:28px;font-size:12px;border:1px solid #ddd;border-radius:7px;padding:0 8px;background:#fff;color:#1a1a1a">
+          <button class="btn btn-gray btn-sm" onclick="document.getElementById('gross-date').value='';renderGross()">全日付</button>
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="loadAll()" style="margin-left:auto">🔄 再読込</button>
+      <button class="btn btn-primary btn-sm" onclick="printGross()">🖨️ 印刷</button>
+    </div>
+    <div id="gross-content" style="overflow-x:auto"></div>
+  </div>
+</div>
+</div></div></div>
+
+<div class="lov" id="lov"><div class="spinner"></div><div class="lov-msg" id="lovmsg">読込中...</div></div>
+
+<!-- MODALS -->
+<div class="modal-bg" id="m-csave"><div class="modal" style="text-align:center">
+  <div class="mico">📋</div><div class="mhd">注文を確定しますか？</div>
+  <div class="msb" id="csave-sub"></div>
+  <div class="mac"><button class="btn btn-gray" onclick="cm('m-csave')">キャンセル</button>
+  <button class="btn btn-primary" id="btn-dosave" onclick="doSave()">はい、確定する</button></div>
+</div></div>
+<div class="modal-bg" id="m-rsave"><div class="modal" style="text-align:center">
+  <div class="rico ok" id="rsave-ico">✅</div>
+  <div class="mhd" id="rsave-hd"></div><div class="msb" id="rsave-sub"></div>
+  <div class="dbox" id="rsave-detail"></div>
+  <button class="btn btn-primary" style="width:120px" onclick="cm('m-rsave')">OK</button>
+</div></div>
+<div class="modal-bg" id="m-shop" onclick="if(event.target===this)cm('m-shop')"><div class="modal">
+  <div class="mtitle" id="mshop-title">店舗を追加</div>
+  <div class="fg"><div class="fl">店舗コード *</div><input type="text" id="ns-code"></div>
+  <div class="fg"><div class="fl">店名 *</div><input type="text" id="ns-name"></div>
+  <div class="fg"><div class="fl">社名 *</div><input type="text" id="ns-co"></div>
+  <div class="fg"><div class="fl">備考</div><input type="text" id="ns-note"></div>
+  <input type="hidden" id="ns-edit">
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid #eee">
+    <button class="btn btn-gray" onclick="cm('m-shop')">キャンセル</button>
+    <button class="btn btn-primary" id="btn-shop" onclick="saveShop()">追加</button>
+  </div>
+</div></div>
+<div class="modal-bg" id="m-prod" onclick="if(event.target===this)cm('m-prod')"><div class="modal">
+  <div class="mtitle" id="mprod-title">商品を追加</div>
+  <div class="fg"><div class="fl">コード *</div><input type="text" id="np-code"></div>
+  <div class="fg"><div class="fl">商品名 *</div><input type="text" id="np-name"></div>
+  <div class="fg"><div class="fl">単位</div><input type="text" id="np-unit"></div>
+  <div class="fg"><div class="fl">ス単位</div><input type="text" id="np-sunit"></div>
+  <input type="hidden" id="np-edit">
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid #eee">
+    <button class="btn btn-gray" onclick="cm('m-prod')">キャンセル</button>
+    <button class="btn btn-primary" id="btn-prod" onclick="saveProd()">追加</button>
+  </div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+/* ── Responsive sidebar ── */
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar') || document.querySelector('.sidebar');
+  const ov=document.getElementById('sidebar-overlay');
+  sb.classList.toggle('open');
+  ov.classList.toggle('open');
+}
+function closeSidebar(){
+  const sb=document.querySelector('.sidebar');
+  const ov=document.getElementById('sidebar-overlay');
+  sb.classList.remove('open');
+  ov.classList.remove('open');
+}
+// Close sidebar when nav item clicked on mobile
+document.querySelectorAll('.nav-item').forEach(el=>{
+  el.addEventListener('click',()=>{
+    if(window.innerWidth<=600) closeSidebar();
+  });
+});
+
+</script>
+<script>
+// ── デフォルトURL — あらかじめ設定済み、変更不要 ──
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwGTaGfHLhx3l5qMkuOj7DiDMHMtCsvjyP20uqQCRnQeI-hpHkUuJZhPJu97hpTtzoWGw/exec';
+
+const DJ=['月','火','水','木','金','土','日'];
+let gasUrl=DEFAULT_GAS_URL;
+let wkOff=0,selCo='',selShop=null,selectedDay=null;
+let orders={},dl={月:'18:00',火:'18:00',水:'18:00',木:'18:00',金:'18:00',土:'12:00',日:'12:00'};
+let isSaving=false,editModes={};
+
+let shops=[];
+const PG=[
+  {g:'大葉',items:[{c:'20039',n:'手のひら大葉（袋入り）',u:'P'},{c:'20037',n:'大 葉（袋詰）',u:'P'}]},
+  {g:'大山ねぎ',items:[{c:'102701',n:'大山ねぎ（サンG）3本',u:'箱'},{c:'102705',n:'大山白ねぎ（春テープ）18入',u:'箱'},{c:'102700',n:'大山ねぎ',u:'箱'}]},
+  {g:'にんにく',items:[{c:'100920',n:'マイルドにんにく M',u:'箱'},{c:'100930b',n:'マイルドにんにく L',u:'箱'},{c:'100950',n:'にんにく 2L',u:'箱'},{c:'100951',n:'にんにく L【箱】',u:'箱'},{c:'100793',n:'しげちゃんにんにく 2L',u:'箱'}]},
+  {g:'だるまいも',items:[{c:'100740',n:'だるまいも（秀）2L',u:'箱'},{c:'100741',n:'だるまいも（秀）L',u:'箱'},{c:'100742',n:'だるまいも（秀）3L',u:'箱'},{c:'100743',n:'だるまいも（秀）4L',u:'箱'},{c:'100762',n:'ダルマイモ（優）2L',u:'箱'},{c:'100763',n:'ダルマイモ（優）L',u:'箱'}]},
+  {g:'トマト',items:[{c:'100648',n:'あまりこトマト',u:'箱'},{c:'100627',n:'濃いこくミニトマト',u:'箱'},{c:'100664',n:'橙王（トマト）',u:'箱'}]},
+  {g:'その他',items:[{c:'100574',n:'メンマ',u:'箱'},{c:'20303',n:'赤なす',u:'本'},{c:'102830',n:'温泉きくらげ',u:'kg'},{c:'100610',n:'菊池ごぼう【L】',u:'箱'},{c:'100546',n:'蜜　郎　2L',u:'箱'}]},
+  {g:'選ばれしイモ・金時',items:[{c:'100595',n:'選ばれしイモ',u:'箱'},{c:'100580',n:'糖度合格いも；袋入',u:'箱'},{c:'100552',n:'不揃い鳴門金時',u:'P'}]},
+  {g:'玉ねぎ',items:[{c:'100780',n:'玉ねぎ　L',u:'箱'},{c:'100781',n:'玉ねぎ【2L】',u:'箱'}]},
+];
+let prods=PG.flatMap(g=>g.items.map(p=>({code:p.c,name:p.n,unit:p.u,group:g.g})));
+let importData={shops:{rows:[],headers:[]},products:{rows:[],headers:[]}};
+
+/* helpers */
+function nk(v){if(!v&&v!==0)return'';const s=String(v).trim();if(s.match(/^[A-Za-z]{3}\s[A-Za-z]{3}\s\d{1,2}\s\d{4}/)){const d=new Date(s);if(!isNaN(d))return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}return s;}
+function gwd(off){const d=new Date();d.setDate(d.getDate()-((d.getDay()||7)-1)+off*7);return Array.from({length:7},(_,i)=>{const dd=new Date(d);dd.setDate(d.getDate()+i);return dd;});}
+function fd(d){return(d.getMonth()+1)+'/'+d.getDate();}
+function gwk(off){return gwd(off)[0].toISOString().slice(0,10);}
+function tds(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function updWkLbl(){const d=gwd(wkOff),l=fd(d[0])+'〜'+fd(d[6]);document.getElementById('twk').textContent=l;const h=document.getElementById('hwk');if(h)h.textContent=l;}
+function isLocked(i){const dates=gwd(wkOff),d=new Date(dates[i]);d.setHours(0,0,0,0);const td=new Date();td.setHours(0,0,0,0);if(d<td)return true;if(d.getTime()===td.getTime()){const v=dl[DJ[i]];if(!v)return false;const[h,m]=v.split(':'),lm=new Date();lm.setHours(+h,+m,0,0);return new Date()>=lm;}return false;}
+function isPast(i){const d=gwd(wkOff)[i];d.setHours(0,0,0,0);const td=new Date();td.setHours(0,0,0,0);return d<td;}
+function hasDayOrd(sc,i){const k=gwk(wkOff)+'_'+sc+'_'+i,o=orders[k];if(!o)return false;return prods.some(p=>parseInt(o[p.code]||0)>0);}
+function dk(sc,i){return gwk(wkOff)+'_'+sc+'_'+i;}
+function getWkDates(wk){const b=new Date(wk+'T00:00:00');return Array.from({length:7},(_,i)=>{const d=new Date(b);d.setDate(b.getDate()+i);return tds(d);});}
+
+/* SHEETS */
+function setSS(s,m){document.getElementById('sdot').className='dot '+s;document.getElementById('stxt').textContent=m;}
+function showLov(m){document.getElementById('lovmsg').textContent=m;document.getElementById('lov').classList.add('open');}
+function hideLov(){document.getElementById('lov').classList.remove('open');}
+async function gasGet(t,params={}){let url=gasUrl+'?type='+t+'&t='+Date.now();Object.entries(params).forEach(([k,v])=>{url+='&'+k+'='+v;});const r=await fetch(url);return r.json();}
+async function gasPost(t,rows){const r=await fetch(gasUrl,{method:'POST',body:JSON.stringify({type:t,rows})});return r.json();}
+
+async function loadAll(){
+  setSS('spin','読込中...');showLov('Sheetsからデータを読込中...');
+  orders={};editModes={};
+  try{
+    await loadShops();await loadProducts();await loadOrders();
+    setSS('ok','Sheets 接続済み');
+    document.getElementById('sheets-ok').style.display='inline';
+    renderCompanyBtns();renderMasterShops();renderMasterProducts();renderHistory();
+    if(selShop){buildDaySelector();buildOrderTable();}
+    if(selCo)renderShopGrid('');
+    toast('データを読み込みました ✅');
+  }catch(e){setSS('err','読込エラー');toast('読込エラー: '+e.message,'err');}
+  finally{hideLov();}
+}
+async function loadShops(){const res=await gasGet('shops');if(!res.data||res.data.length<2)return;const r=res.data.slice(1).filter(r=>r[0]&&String(r[0]).trim());if(r.length)shops=r.map(r=>({code:nk(r[0]),name:String(r[1]||''),co:String(r[2]||''),note:String(r[3]||'')}));}
+async function loadProducts(){const res=await gasGet('products');if(!res.data||res.data.length<2)return;const r=res.data.slice(1).filter(r=>r[0]&&String(r[0]).trim());if(r.length){prods=r.map(r=>({code:nk(r[0]),name:String(r[1]||''),unit:String(r[2]||'箱'),group:String(r[4]||'その他')}));PG.forEach(g=>{g.items=[];});prods.forEach(p=>{let g=PG.find(x=>x.g===p.group);if(!g){g={g:p.group,items:[]};PG.push(g);}g.items.push({c:p.code,n:p.name,u:p.unit});});}}
+async function loadOrders(){const res=await gasGet('order',{year:new Date().getFullYear()});if(!res.data||res.data.length<2)return;res.data.slice(1).forEach(row=>{const wk=nk(row[0]),ds=nk(row[1]),sc=nk(row[2]),pc=nk(row[5]),qty=row[7];if(!wk||!sc||!pc||!ds)return;const dates=getWkDates(wk),di=dates.findIndex(d=>d===ds);if(di<0)return;const key=wk+'_'+sc+'_'+di;if(!orders[key])orders[key]={_saved:true,_time:String(row[8]||'')};const n=Number(qty);if(!isNaN(n)&&n!==0)orders[key][pc]=String(Math.round(n));});}
+async function syncShops(){setSS('spin','同期中...');showLov('店舗マスタを同期中...');try{await gasPost('shops',[['店舗コード','店名','社名','備考'],...shops.map(s=>[s.code,s.name,s.co,s.note||''])]);setSS('ok','Sheets 接続済み');toast('店舗マスタを同期しました ✅');}catch(e){setSS('err','エラー');}finally{hideLov();}}
+async function syncProducts(){setSS('spin','同期中...');showLov('商品マスタを同期中...');try{await gasPost('products',[['コード','商品名','単位','ス単位','グループ'],...prods.map(p=>[p.code,p.name,p.unit,p.unit,p.group||'その他'])]);setSS('ok','Sheets 接続済み');toast('商品マスタを同期しました ✅');}catch(e){setSS('err','エラー');}finally{hideLov();}}
+function buildFullOrderRows(){const hdr=['週','日付','店舗コード','店名','社名','商品コード','商品名','数量','更新時間'],rows=[hdr];Object.entries(orders).forEach(([key,val])=>{if(!val._saved)return;const parts=key.split('_');if(parts.length<3)return;const[wk,sc,diStr]=parts,di=parseInt(diStr),sh=shops.find(s=>s.code===sc);if(!sh)return;const base=new Date(wk+'T00:00:00'),d=new Date(base);d.setDate(base.getDate()+di);prods.forEach(p=>{const qty=parseInt(val[p.code]||0)||0;if(qty>0)rows.push([wk,tds(d),sh.code,sh.name,sh.co,p.code,p.name,qty,val._time||'']);});});return rows;}
+async function pushAllOrders(){await gasPost('order',buildFullOrderRows());}
+
+/* screen/nav */
+function showScreen(n,el){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+n).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));if(el)el.classList.add('active');const t={order:'発注',history:'発注履歴',master:'マスタ管理',admin:'設定',export:'データ出力',picking:'ピッキングリスト',label:'店舗ラベル',gross:'グロス表'};document.getElementById('ptitle').textContent=t[n]||n;if(n==='master'){renderMasterShops();renderMasterProducts();}if(n==='history'){populateHCo();renderHistory();}if(n==='admin'){renderDL();document.getElementById('gasurl').value=gasUrl;}if(n==='export')renderExport();
+  if(n==='picking'){populateDateSelects();renderPicking();}
+  if(n==='label'){populateDateSelects();renderLabels();}
+  if(n==='gross'){populateDateSelects();renderGross();}}
+function stab(tab,el){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tc').forEach(c=>c.classList.remove('active'));el.classList.add('active');document.getElementById('tab-'+tab).classList.add('active');}
+function changeWeek(dir){wkOff+=dir;updWkLbl();selectedDay=null;if(selShop){buildDaySelector();buildOrderTable();}if(selCo)renderShopGrid('');}
+
+/* company/shop — KEY CHANGE: hide shop list when order form opens */
+function getCos(){return[...new Set(shops.map(s=>s.co))].sort();}
+function renderCompanyBtns(){document.getElementById('cobtns').innerHTML=getCos().map(c=>`<button class="company-btn${selCo===c?' active':''}" onclick="selComp('${c.replace(/'/g,"\\'")}')">${c}</button>`).join('');}
+function selComp(c){
+  selCo=c;selShop=null;selectedDay=null;
+  document.getElementById('orderform').style.display='none';
+  document.getElementById('shopsec').style.display='block'; // show shop list
+  renderCompanyBtns();
+  document.getElementById('selco').textContent=c;
+  renderShopGrid('');
+}
+function backToShops(){
+  // hide order form, show shop list
+  document.getElementById('orderform').style.display='none';
+  document.getElementById('shopsec').style.display='block';
+  selShop=null;selectedDay=null;
+  renderShopGrid('');
+}
+function renderShopGrid(f){const list=shops.filter(s=>s.co===selCo&&(f===''||s.name.includes(f)||s.code.includes(f)));document.getElementById('shopgrid').innerHTML=list.map(s=>{const any=Array.from({length:7},(_,i)=>i).some(i=>hasDayOrd(s.code,i));return`<div class="shop-item${any?' ordered':''}" onclick="openShop('${s.code}')"><div class="shop-name">${s.name}</div><div class="shop-code">${s.code}</div>${any?'<span class="tag-ok">✓ 済</span>':''}</div>`;}).join('');}
+function filterShops(v){if(selCo)renderShopGrid(v);}
+function openShop(code){
+  selShop=shops.find(s=>s.code===code);if(!selShop)return;
+  document.getElementById('hshop').textContent=selShop.name;
+  document.getElementById('hcode').textContent='['+selShop.code+']';
+  // HIDE shop list, SHOW order form
+  document.getElementById('shopsec').style.display='none';
+  document.getElementById('orderform').style.display='block';
+  const dates=gwd(wkOff),ts=new Date().toDateString();
+  let def=dates.findIndex(d=>d.toDateString()===ts);if(def<0)def=0;
+  selectedDay=def;
+  buildDaySelector();buildOrderTable();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function buildDaySelector(){if(!selShop)return;const dates=gwd(wkOff),ts=new Date().toDateString();document.getElementById('day-selector').innerHTML=dates.map((d,i)=>{const past=isPast(i),isToday=d.toDateString()===ts,hasOrd=hasDayOrd(selShop.code,i),isActive=selectedDay===i;let cls='day-btn';if(isActive)cls+=' active';if(hasOrd&&!isActive)cls+=' has-order';if(past&&!isToday)cls+=' past';if(isToday)cls+=' today-d';return`<div class="${cls}" onclick="selectDay(${i})"><span class="dn">${DJ[i]}</span><span class="dd">${fd(d)}</span>${hasOrd&&!isActive?'<div class="d-dot"></div>':''}</div>`;}).join('');}
+function selectDay(i){selectedDay=i;buildDaySelector();buildOrderTable();}
+
+function buildOrderTable(){
+  if(!selShop||selectedDay===null)return;
+  const di=selectedDay,key=dk(selShop.code,di),saved=orders[key]||{};
+  const isOrdered=!!saved._saved,locked=isLocked(di),isEditing=!!editModes[key];
+  const dates=gwd(wkOff),ds=fd(dates[di]);
+  const COLS='1fr 88px 120px';
+  const banner=document.getElementById('order-banner');
+  if(locked){
+    banner.innerHTML=`<div class="bn-lock">🔒 ${ds}（${DJ[di]}）— ${isPast(di)?'過去の日付のため変更不可':'締め切り済みのため変更不可'}</div>`;
+  }else if(isOrdered&&!isEditing){
+    banner.innerHTML=`<div class="bn-done"><div class="bn-done-l"><span style="font-size:20px">✅</span><div><strong style="font-size:13px">${ds}（${DJ[di]}）注文済み</strong><div style="font-size:11px;opacity:.75;margin-top:1px">${saved._time||''}</div></div></div><button class="btn btn-blue" onclick="enterEditMode('${key}')">✏️ 修正する</button></div>`;
+  }else if(isOrdered&&isEditing){
+    banner.innerHTML=`<div class="bn-edit"><span>✏️ <strong>修正モード</strong> — 変更後に「確定」で保存してください</span><button class="btn btn-gray btn-sm" onclick="cancelEdit('${key}')">← キャンセル</button></div>`;
+  }else{
+    banner.innerHTML=`<div class="bn-new">📝 ${ds}（${DJ[di]}）— 数量を入力して「確定する」を押してください</div>`;
+  }
+  let html=`<div class="col-hdr" style="display:grid;grid-template-columns:${COLS}"><div class="ch nch">品名</div><div class="ch">単位</div><div class="ch">数量</div></div>`;
+  // Flat product list — no grouping
+  prods.forEach(p=>{
+    const v=saved[p.code]||'',hasV=v&&v!=='0',showInput=!isOrdered||(isOrdered&&isEditing);
+    if(locked){
+      html+=`<div class="prow" style="display:grid;grid-template-columns:${COLS}"><div class="cname">${p.name}</div><div class="cunit">${p.unit}</div><div class="cqty lck"><div class="vval${hasV?' has':''}">${hasV?v:''}</div></div></div>`;
+    }else if(showInput){
+      html+=`<div class="prow" style="display:grid;grid-template-columns:${COLS}"><div class="cname">${p.name}</div><div class="cunit">${p.unit}</div><div class="cqty"><input type="number" min="0" value="${(v&&v!=='0')?v:''}" oninput="updCell('${p.code}',this.value)" placeholder="0"></div></div>`;
+    }else{
+      html+=`<div class="prow" style="display:grid;grid-template-columns:${COLS}"><div class="cname">${p.name}</div><div class="cunit">${p.unit}</div><div class="cqty"><div class="vval${hasV?' has':''}">${hasV?v:''}</div></div></div>`;
+    }
+  });
+  document.getElementById('oinner').innerHTML=html;
+  document.getElementById('hwk').textContent=fd(dates[0])+'〜'+fd(dates[6]);
+  const tot=prods.reduce((s,p)=>s+(parseInt(saved[p.code]||0)||0),0);
+  const ftr=document.getElementById('order-footer');
+  if(locked){
+    ftr.innerHTML=`<div class="oftr-v"><span style="font-size:12px;color:#888">🔒 変更不可</span><span style="font-size:14px;color:#C0482A;font-weight:700">合計: ${tot}</span></div>`;
+  }else if(isOrdered&&!isEditing){
+    ftr.innerHTML=`<div class="oftr-v"><span style="font-size:12px;color:#2E7D32">✅ 注文済み</span><span style="font-size:14px;color:#C0482A;font-weight:700">合計: ${tot}</span></div>`;
+  }else{
+    ftr.innerHTML=`<div class="oftr"><span style="font-size:14px;color:#C0482A;font-weight:700" id="day-total">合計: ${tot}</span><div style="display:flex;gap:8px"><button class="btn btn-sm btn-danger" onclick="clearDay()">🗑 クリア</button><button class="btn btn-primary" style="font-size:13px;padding:6px 18px" onclick="confirmSaveDay()">💾 確定する</button></div></div>`;
+  }
+}
+function enterEditMode(key){editModes[key]=true;buildOrderTable();}
+function cancelEdit(key){delete editModes[key];buildOrderTable();}
+function updCell(code,val){const key=dk(selShop.code,selectedDay);if(!orders[key])orders[key]={};orders[key][code]=val;const tot=prods.reduce((s,p)=>s+(parseInt(orders[key][p.code]||0)||0),0);const el=document.getElementById('day-total');if(el)el.textContent='合計: '+tot;}
+function clearDay(){const key=dk(selShop.code,selectedDay);orders[key]={};delete editModes[key];buildOrderTable();buildDaySelector();}
+function confirmSaveDay(){if(isSaving){toast('保存中...','warn');return;}const key=dk(selShop.code,selectedDay),saved=orders[key]||{};const tot=prods.reduce((s,p)=>s+(parseInt(saved[p.code]||0)||0),0);const dates=gwd(wkOff),isEditing=!!editModes[key];document.getElementById('csave-sub').innerHTML=`<strong>${selShop.name}</strong><br>日付：${fd(dates[selectedDay])}（${DJ[selectedDay]}）<br>合計数量：<strong>${tot}</strong>${isEditing?'<br><span style="color:#E65100;font-size:11px">⚠️ 既存の注文を修正します</span>':''}`;const btn=document.getElementById('btn-dosave');if(btn)btn.disabled=false;om('m-csave');}
+async function doSave(){
+  if(isSaving)return;isSaving=true;
+  const btn=document.getElementById('btn-dosave');if(btn){btn.disabled=true;btn.textContent='保存中...';}
+  cm('m-csave');
+  const key=dk(selShop.code,selectedDay);if(!orders[key])orders[key]={};
+  orders[key]._saved=true;orders[key]._time=new Date().toLocaleString('ja-JP');
+  delete editModes[key];
+  showLov('Sheets に保存中...');setSS('spin','保存中...');
+  let ok=false;
+  try{await pushAllOrders();ok=true;setSS('ok','Sheets 接続済み');}
+  catch(e){setSS('err','保存エラー');}
+  finally{hideLov();isSaving=false;if(btn){btn.disabled=false;btn.textContent='はい、確定する';}}
+  const dates=gwd(wkOff),saved=orders[key];let lines='';
+  PG.forEach(g=>g.items.forEach(p=>{const q=parseInt(saved[p.c]||0)||0;if(q>0)lines+=`<div><strong>${p.n}</strong>：${q} ${p.u}</div>`;}));
+  const ico=document.getElementById('rsave-ico'),hd=document.getElementById('rsave-hd'),sb=document.getElementById('rsave-sub');
+  if(ok){ico.textContent='✅';ico.className='rico ok';hd.textContent='注文を確定しました！';sb.innerHTML='<span style="color:#2E7D32">✅ Sheetsに保存しました</span>';}
+  else{ico.textContent='⚠️';ico.className='rico';ico.style.background='#FFF3E0';hd.textContent='ローカルのみ保存';sb.innerHTML='<span style="color:#E65100">⚠️ Sheets同期失敗</span>';}
+  document.getElementById('rsave-detail').innerHTML=`<div>店舗：<strong>${selShop.name}</strong> / ${selShop.co}</div><div>日付：${fd(dates[selectedDay])}（${DJ[selectedDay]}）</div>`+(lines||'<div style="color:#aaa">（入力なし）</div>');
+  om('m-rsave');buildDaySelector();buildOrderTable();
+}
+/* master */
+function renderMasterShops(f=''){const list=f?shops.filter(s=>s.name.includes(f)||s.code.includes(f)||s.co.includes(f)):shops;document.getElementById('shopstbl').innerHTML=list.map((s,i)=>`<tr><td class="rn">${i+1}</td><td class="cc">${s.code}</td><td>${s.name}</td><td>${s.co}</td><td style="color:#999">${s.note||'—'}</td><td style="text-align:center;white-space:nowrap"><button class="btn btn-edit" onclick="editShop('${s.code}')">✏️</button> <button class="btn btn-danger" onclick="delShop('${s.code}')">🗑</button></td></tr>`).join('');document.getElementById('shopscnt').textContent=list.length+'件 / 全'+shops.length+'件';}
+function renderMasterProducts(f=''){const list=f?prods.filter(p=>p.name.includes(f)||p.code.includes(f)):prods;document.getElementById('prodtbl').innerHTML=list.map((p,i)=>`<tr><td class="rn">${i+1}</td><td class="cc">${p.code}</td><td>${p.name}</td><td style="text-align:center">${p.unit}</td><td style="text-align:center">${p.unit}</td><td style="text-align:center;white-space:nowrap"><button class="btn btn-edit" onclick="editProd('${p.code}')">✏️</button> <button class="btn btn-danger" onclick="delProd('${p.code}')">🗑</button></td></tr>`).join('');document.getElementById('prodcnt').textContent=list.length+'件 / 全'+prods.length+'件';}
+function delShop(code){const s=shops.find(x=>x.code===code);if(!s)return;if(confirm(`「${s.name}」を削除しますか？`)){shops=shops.filter(x=>x.code!==code);renderMasterShops();}}
+function delProd(code){const p=prods.find(x=>x.code===code);if(!p)return;if(confirm(`「${p.name}」を削除しますか？`)){prods=prods.filter(x=>x.code!==code);PG.forEach(g=>{g.items=g.items.filter(x=>x.c!==code);});renderMasterProducts();}}
+function openAddShop(){document.getElementById('mshop-title').textContent='店舗を追加';document.getElementById('btn-shop').textContent='追加';document.getElementById('ns-code').disabled=false;['ns-code','ns-name','ns-co','ns-note','ns-edit'].forEach(id=>document.getElementById(id).value='');om('m-shop');}
+function editShop(code){const s=shops.find(x=>x.code===code);if(!s)return;document.getElementById('mshop-title').textContent='店舗を修正';document.getElementById('btn-shop').textContent='更新';document.getElementById('ns-code').value=s.code;document.getElementById('ns-code').disabled=false;document.getElementById('ns-name').value=s.name;document.getElementById('ns-co').value=s.co;document.getElementById('ns-note').value=s.note||'';document.getElementById('ns-edit').value=s.code;om('m-shop');}
+function saveShop(){const ed=document.getElementById('ns-edit').value,code=document.getElementById('ns-code').value.trim(),name=document.getElementById('ns-name').value.trim(),co=document.getElementById('ns-co').value.trim(),note=document.getElementById('ns-note').value.trim();if(!code||!name||!co){alert('コード・店名・社名は必須です');return;}if(ed){const i=shops.findIndex(s=>s.code===ed);if(i>=0)shops[i]={code:ed,name,co,note};}else{if(shops.find(s=>s.code===code)){alert('このコードは既に存在します');return;}shops.push({code,name,co,note});}document.getElementById('ns-code').disabled=false;cm('m-shop');renderMasterShops();renderCompanyBtns();['ns-code','ns-name','ns-co','ns-note','ns-edit'].forEach(id=>document.getElementById(id).value='');}
+function openAddProduct(){document.getElementById('mprod-title').textContent='商品を追加';document.getElementById('btn-prod').textContent='追加';document.getElementById('np-code').disabled=false;['np-code','np-name','np-unit','np-sunit','np-edit'].forEach(id=>document.getElementById(id).value='');om('m-prod');}
+function editProd(code){const p=prods.find(x=>x.code===code);if(!p)return;document.getElementById('mprod-title').textContent='商品を修正';document.getElementById('btn-prod').textContent='更新';document.getElementById('np-code').value=p.code;document.getElementById('np-code').disabled=false;document.getElementById('np-name').value=p.name;document.getElementById('np-unit').value=p.unit;document.getElementById('np-sunit').value=p.unit;document.getElementById('np-edit').value=p.code;om('m-prod');}
+function saveProd(){const ed=document.getElementById('np-edit').value,code=document.getElementById('np-code').value.trim(),name=document.getElementById('np-name').value.trim(),unit=document.getElementById('np-unit').value.trim()||'箱';if(!code||!name){alert('コード・商品名は必須です');return;}if(ed){const i=prods.findIndex(p=>p.code===ed);if(i>=0)prods[i]={...prods[i],name,unit};PG.forEach(g=>{const pi=g.items.findIndex(p=>p.c===ed);if(pi>=0)g.items[pi]={...g.items[pi],n:name,u:unit};});}else{if(prods.find(p=>p.code===code)){alert('このコードは既に存在します');return;}prods.push({code,name,unit,group:'その他'});PG.find(g=>g.g==='その他').items.push({c:code,n:name,u:unit});}document.getElementById('np-code').disabled=false;cm('m-prod');renderMasterProducts();['np-code','np-name','np-unit','np-sunit','np-edit'].forEach(id=>document.getElementById(id).value='');}
+function handleFile(input,type){const file=input.files[0];if(file)readFile(file,type);input.value='';}
+function readFile(file,type){const reader=new FileReader();reader.onload=e=>{try{let rows=[];if(file.name.endsWith('.csv')){const text=new TextDecoder('utf-8').decode(e.target.result);rows=text.split('\n').map(l=>l.split(',').map(c=>c.replace(/^"|"$/g,'').trim())).filter(r=>r.some(c=>c));}else{const wb=XLSX.read(e.target.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''}).filter(r=>r.some(c=>String(c).trim()));}if(rows.length<2){toast('データが見つかりません','err');return;}importData[type]={rows,headers:rows[0].map(h=>String(h).trim())};showPreview(type);}catch(err){toast('読込エラー: '+err.message,'err');}};reader.readAsArrayBuffer(file);}
+function showPreview(type){const{rows,headers}=importData[type];const isShop=type==='shops';const fields=isShop?[{id:'f-code',label:'店舗コード',hint:['店舗コード','コード','code']},{id:'f-name',label:'店名',hint:['店名','name']},{id:'f-co',label:'社名',hint:['社名','company']},{id:'f-note',label:'備考',hint:['備考','note']}]:[{id:'f-code',label:'コード',hint:['コード','code','商品コード']},{id:'f-name',label:'商品名',hint:['商品名','name','品名']},{id:'f-unit',label:'単位',hint:['単位','unit']},{id:'f-sunit',label:'ス単位',hint:['ス単位','sunit']}];const opts=['<option value="">（未選択）</option>',...headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');document.getElementById(isShop?'shop-colmap':'prod-colmap').innerHTML=fields.map(f=>{const gi=headers.findIndex(h=>f.hint.some(k=>String(h).toLowerCase().includes(k.toLowerCase())));return`<div class="col-map-row"><span class="col-map-lbl">${f.label}</span><select id="${f.id}">${opts.replace(`value="${gi}"`,`value="${gi}" selected`)}</select></div>`;}).join('');let tbl=`<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`;rows.slice(1,6).forEach(r=>{tbl+=`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`;});tbl+='</tbody></table>';document.getElementById(isShop?'shop-preview-tbl':'prod-preview-tbl').innerHTML=tbl;document.getElementById(isShop?'shop-preview-count':'prod-preview-count').textContent=`${rows.length-1}件を読み込みました`;document.getElementById(isShop?'shop-preview':'prod-preview').style.display='block';}
+function getColVal(row,id){const idx=parseInt(document.getElementById(id).value);return isNaN(idx)?'':String(row[idx]||'').trim();}
+function applyShopImport(){const{rows}=importData.shops;const imported=rows.slice(1).map(r=>({code:getColVal(r,'f-code'),name:getColVal(r,'f-name'),co:getColVal(r,'f-co'),note:getColVal(r,'f-note')})).filter(s=>s.code&&s.name);if(!imported.length){toast('有効なデータがありません','err');return;}imported.forEach(ns=>{const i=shops.findIndex(s=>s.code===ns.code);if(i>=0)shops[i]={...shops[i],...ns};else shops.push(ns);});cancelImport('shops');renderMasterShops();renderCompanyBtns();toast(`${imported.length}件インポートしました ✅`);syncShops();}
+function applyProdImport(){const{rows}=importData.products;const imported=rows.slice(1).map(r=>({code:getColVal(r,'f-code'),name:getColVal(r,'f-name'),unit:getColVal(r,'f-unit')||'箱'})).filter(p=>p.code&&p.name);if(!imported.length){toast('有効なデータがありません','err');return;}imported.forEach(np=>{const i=prods.findIndex(p=>p.code===np.code);if(i>=0)prods[i]={...prods[i],name:np.name,unit:np.unit};else prods.push({code:np.code,name:np.name,unit:np.unit,group:'その他'});});const og=PG.find(g=>g.g==='その他')||(()=>{const g={g:'その他',items:[]};PG.push(g);return g;})();imported.filter(np=>!PG.flatMap(g=>g.items).find(i=>i.c===np.code)).forEach(np=>{og.items.push({c:np.code,n:np.name,u:np.unit});});cancelImport('products');renderMasterProducts();toast(`${imported.length}件インポートしました ✅`);syncProducts();}
+function cancelImport(type){document.getElementById(type==='shops'?'shop-preview':'prod-preview').style.display='none';importData[type]={rows:[],headers:[]};}
+function renderDL(){document.getElementById('dlset').innerHTML=DJ.map(d=>`<div class="trow"><div class="dlbl">${d}曜日</div><input type="text" id="dl_${d}" value="${dl[d]}" style="width:80px"><span style="font-size:11px;color:#999">以降変更不可</span></div>`).join('');}
+function saveDL(){DJ.forEach(d=>{const v=document.getElementById('dl_'+d)?.value;if(v)dl[d]=v;});toast('保存しました ✅');}
+async function saveUrl(){const url=document.getElementById('gasurl').value.trim();if(!url)return;gasUrl=url;const r=document.getElementById('urlres');r.textContent='確認中...';r.style.color='#888';try{await gasGet('shops');r.textContent='✅ 接続成功！';r.style.color='#2E7D32';await loadAll();}catch(e){r.textContent='❌ 失敗: '+e.message;r.style.color='#A32D2D';}}
+function populateHCo(){const sel=document.getElementById('hco'),ex=[...sel.options].map(o=>o.value);getCos().forEach(c=>{if(!ex.includes(c)){const o=document.createElement('option');o.value=c;o.textContent=c;sel.appendChild(o);}});}
+function renderHistory(){const f=document.getElementById('hco').value,rows=[];Object.entries(orders).forEach(([key,val])=>{if(!val._saved)return;const parts=key.split('_');if(parts.length<3)return;const[wk,sc,di]=parts,sh=shops.find(s=>s.code===sc);if(!sh||f&&sh.co!==f)return;const tot=prods.reduce((s,p)=>s+(parseInt(val[p.code]||0)||0),0);if(tot===0)return;const base=new Date(wk+'T00:00:00'),d=new Date(base);d.setDate(base.getDate()+parseInt(di));rows.push(`<tr><td>${wk}</td><td>${sh.co}</td><td>${sh.name}</td><td>${DJ[di]} ${fd(d)}</td><td><span class="badge-ok">完了</span></td><td style="font-size:11px;color:#999">${val._time||''}</td><td><button class="btn btn-sm" onclick="goEditDay('${sc}','${wk}',${di})">確認・修正</button></td></tr>`);});document.getElementById('htbody').innerHTML=rows.length?rows.join(''):'<tr><td colspan="7" style="text-align:center;padding:16px;color:#999">データなし</td></tr>';}
+function goEditDay(code,wk,di){const sh=shops.find(s=>s.code===code);if(!sh)return;selShop=sh;selCo=sh.co;const base=new Date(wk),cur=gwd(0)[0];wkOff=Math.round((base-cur)/(7*86400000));selectedDay=parseInt(di);updWkLbl();document.getElementById('hshop').textContent=sh.name;document.getElementById('hcode').textContent='['+sh.code+']';document.getElementById('shopsec').style.display='none';document.getElementById('orderform').style.display='block';buildDaySelector();buildOrderTable();renderCompanyBtns();document.getElementById('selco').textContent=sh.co;showScreen('order',document.querySelector('.nav-item'));}
+function renderExport(){const sv=Object.entries(orders).filter(([k,v])=>v._saved&&prods.some(p=>parseInt(v[p.code]||0)>0));document.getElementById('stat-orders').textContent=sv.length;document.getElementById('stat-shops').textContent=new Set(sv.map(([k])=>k.split('_')[1])).size;const rows=[];sv.forEach(([key,val])=>{const parts=key.split('_');if(parts.length<3)return;const[wk,sc,di]=parts,sh=shops.find(s=>s.code===sc);if(!sh)return;const base=new Date(wk+'T00:00:00'),d=new Date(base);d.setDate(base.getDate()+parseInt(di));prods.forEach(p=>{const qty=parseInt(val[p.code]||0)||0;if(!qty)return;rows.push(`<tr><td>${wk}</td><td>${DJ[di]} ${fd(d)}</td><td>${sh.code}</td><td>${sh.name}</td><td>${sh.co}</td><td>${p.code}</td><td>${p.name}</td><td>${qty}</td><td style="font-size:11px;color:#999">${val._time||''}</td></tr>`);});});document.getElementById('exptbl').innerHTML=rows.length?rows.join(''):'<tr><td colspan="9" style="text-align:center;padding:14px;color:#999">データなし</td></tr>';}
+function expCSV(){const h='週,日付,店舗コード,店名,社名,商品コード,商品名,数量,更新時間';const csv=h+'\n'+[...document.querySelectorAll('#exptbl tr')].map(r=>[...r.cells].map(c=>'"'+c.textContent+'"').join(',')).join('\n');const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);a.download='order_data.csv';a.click();}
+function expCopy(){navigator.clipboard.writeText([...document.querySelectorAll('#exptbl tr')].map(r=>[...r.cells].map(c=>c.textContent).join('\t')).join('\n')).then(()=>toast('コピーしました ✅'));}
+function om(id){document.getElementById(id).classList.add('open');}
+function cm(id){document.getElementById(id).classList.remove('open');if(id==='m-shop')document.getElementById('ns-code').disabled=false;if(id==='m-prod')document.getElementById('np-code').disabled=false;}
+function toast(msg,type='ok'){const t=document.createElement('div');t.style.cssText=`position:fixed;bottom:20px;right:20px;z-index:999;padding:10px 16px;border-radius:8px;font-size:12px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.15);transition:opacity .4s;${type==='err'?'background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1':type==='warn'?'background:#FFF3E0;color:#E65100;border:1px solid #FFB74D':'background:#EAF3DE;color:#2E7D32;border:1px solid #A5D6A7'}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),400);},3000);}
+
+function deleteAllShops(){if(!confirm('全ての店舗データを削除しますか？\nこの操作は取り消せません。'))return;shops=[];renderMasterShops();renderCompanyBtns();toast('店舗データを全て削除しました');}
+function deleteAllProducts(){if(!confirm('全ての商品データを削除しますか？\nこの操作は取り消せません。'))return;prods=[];PG.forEach(g=>{g.items=[];});renderMasterProducts();toast('商品データを全て削除しました');}
+
+/* ════════════════════════════════════════
+   PICKING / LABEL / GROSS — from Google Sheets
+   Data format: 週(0)|日付(1)|店舗コード(2)|店名(3)|社名(4)|商品コード(5)|商品名(6)|数量(7)|更新時間(8)
+   Order: 公司 → 店舗 → 商品
+════════════════════════════════════════ */
+
+/* Build structured data from orders object */
+function buildOrderData(dateFilter) {
+  // orders keys: "YYYY-MM-DD_shopCode_dayIdx"
+  // We need: co → shop → product → qty, by actual date
+  const result = {}; // { date: { co: { shopCode: { shopName, items:[{code,name,unit,qty}] } } } }
+  const dates = new Set();
+
+  Object.entries(orders).forEach(([key, val]) => {
+    if (!val._saved) return;
+    const parts = key.split('_');
+    if (parts.length < 3) return;
+    const [wk, sc, diStr] = parts;
+    const di = parseInt(diStr);
+    const sh = shops.find(s => s.code === sc);
+    if (!sh) return;
+    const base = new Date(wk + 'T00:00:00');
+    const d = new Date(base);
+    d.setDate(base.getDate() + di);
+    const dateStr = tds(d);
+    dates.add(dateStr);
+
+    if (dateFilter !== 'ALL' && dateStr !== dateFilter) return;
+
+    if (!result[dateStr]) result[dateStr] = {};
+    if (!result[dateStr][sh.co]) result[dateStr][sh.co] = {};
+    if (!result[dateStr][sh.co][sc]) result[dateStr][sh.co][sc] = { shopName: sh.name, co: sh.co, items: [] };
+
+    prods.forEach(p => {
+      const qty = parseInt(val[p.code] || 0) || 0;
+      if (qty > 0) {
+        result[dateStr][sh.co][sc].items.push({ code: p.code, name: p.name, unit: p.unit, qty });
+      }
+    });
+  });
+
+  return { data: result, dates: [...dates].sort() };
+}
+
+/* Populate date selects */
+function populateDateSelects() {
+  const { dates } = buildOrderData('ALL');
+  // All date filters are now date picker inputs — no need to populate options
+  // Populate company filter for labels
+  const labelCo = document.getElementById('label-co');
+  if (labelCo) {
+    const cur = labelCo.value;
+    const cos = [...new Set(shops.map(s => s.co))].sort();
+    labelCo.innerHTML = '<option value="ALL">全会社</option>' +
+      cos.map(c => `<option value="${c}"${c === cur ? ' selected' : ''}>${c}</option>`).join('');
+  }
+}
+
+/* ── PICKING LIST ── */
+function renderPicking() {
+  const dateFilter = document.getElementById('pick-date')?.value || 'ALL';
+  const { data } = buildOrderData(dateFilter);
+  const el = document.getElementById('picking-content');
+  if (!el) return;
+
+  // Build: rows=products, cols=shops, grouped by date
+  const allDates = Object.keys(data).sort();
+  if (!allDates.length) { el.innerHTML = '<div style="padding:20px;color:#999;text-align:center">データがありません</div>'; return; }
+
+  let html = '';
+  allDates.forEach(date => {
+    const dateData = data[date];
+    // Collect all shops and products for this date
+    const shopList = []; // [{co, code, name}]
+    const prodQtys = {}; // { prodCode: { shopCode: qty } }
+
+    Object.entries(dateData).sort(([a],[b]) => a.localeCompare(b, 'ja')).forEach(([co, shops_]) => {
+      Object.entries(shops_).sort(([,a],[,b]) => a.shopName.localeCompare(b.shopName, 'ja')).forEach(([sc, shopData]) => {
+        shopList.push({ co, code: sc, name: shopData.shopName });
+        shopData.items.forEach(item => {
+          if (!prodQtys[item.code]) prodQtys[item.code] = { name: item.name, unit: item.unit, qtys: {} };
+          prodQtys[item.code].qtys[sc] = (prodQtys[item.code].qtys[sc] || 0) + item.qty;
+        });
+      });
+    });
+
+    if (!shopList.length) return;
+    const prodList = Object.entries(prodQtys).filter(([,v]) => Object.values(v.qtys).some(q => q > 0));
+    if (!prodList.length) return;
+
+    html += `<div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;padding:6px 10px;background:#e8f0fe;border-radius:6px;margin-bottom:8px;color:#1565C0">📅 ${date}</div>
+      <div style="overflow-x:auto">
+      <table class="pick-table">
+        <thead><tr>
+          <th class="name-col" style="text-align:left">商品名</th>
+          <th style="font-size:10px;color:#666;font-weight:400">単位</th>
+          ${shopList.map(s => `<th style="font-size:10px;writing-mode:vertical-rl;min-width:28px;max-width:40px">${s.name}</th>`).join('')}
+          <th class="total-col">合計</th>
+        </tr></thead>
+        <tbody>`;
+
+    prodList.forEach(([code, {name, unit, qtys}]) => {
+      const total = shopList.reduce((s, sh) => s + (qtys[sh.code] || 0), 0);
+      html += `<tr>
+        <td class="name-col">${name}</td>
+        <td style="color:#888;font-size:11px">${unit}</td>
+        ${shopList.map(sh => {
+          const q = qtys[sh.code] || 0;
+          return `<td style="color:${q > 0 ? '#111' : '#ddd'}">${q > 0 ? q : '—'}</td>`;
+        }).join('')}
+        <td class="total-col">${total}</td>
+      </tr>`;
+    });
+
+    // Footer totals
+    html += `<tr style="background:#f0f0f0;font-weight:700">
+      <td class="name-col">合計</td><td></td>
+      ${shopList.map(sh => {
+        const s = prodList.reduce((t, [,{qtys}]) => t + (qtys[sh.code] || 0), 0);
+        return `<td>${s > 0 ? s : '—'}</td>`;
+      }).join('')}
+      <td class="total-col">${prodList.reduce((t, [,{qtys}]) => t + shopList.reduce((s, sh) => s + (qtys[sh.code] || 0), 0), 0)}</td>
+    </tr>`;
+
+    html += `</tbody></table></div></div>`;
+  });
+
+  el.innerHTML = html || '<div style="padding:20px;color:#999;text-align:center">データがありません</div>';
+}
+
+function printPicking() {
+  const dateFilter = document.getElementById('pick-date')?.value || 'ALL';
+  const { data } = buildOrderData(dateFilter);
+  const allDates = Object.keys(data).sort();
+  if (!allDates.length) { toast('データがありません', 'warn'); return; }
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('ポップアップがブロックされています'); return; }
+
+  let sections = '';
+  allDates.forEach(date => {
+    const dateData = data[date];
+    const shopList = [];
+    const prodQtys = {};
+    Object.entries(dateData).sort(([a],[b]) => a.localeCompare(b,'ja')).forEach(([co, shops_]) => {
+      Object.entries(shops_).sort(([,a],[,b]) => a.shopName.localeCompare(b.shopName,'ja')).forEach(([sc, shopData]) => {
+        shopList.push({ co, code: sc, name: shopData.shopName });
+        shopData.items.forEach(item => {
+          if (!prodQtys[item.code]) prodQtys[item.code] = { name: item.name, unit: item.unit, qtys: {} };
+          prodQtys[item.code].qtys[sc] = (prodQtys[item.code].qtys[sc] || 0) + item.qty;
+        });
+      });
+    });
+    const prodList = Object.entries(prodQtys).filter(([,v]) => Object.values(v.qtys).some(q => q > 0));
+    if (!shopList.length || !prodList.length) return;
+    const sf = shopList.length > 20 ? 7 : shopList.length > 12 ? 8 : 9;
+
+    sections += `<div class="section">
+      <div class="stitle">📅 ${date}</div>
+      <table>
+        <thead><tr>
+          <th style="text-align:left;min-width:120px">商品名</th>
+          <th style="min-width:30px">単位</th>
+          ${shopList.map(s => `<th style="font-size:${sf}px;writing-mode:vertical-rl;min-width:${sf+16}px">${s.name}</th>`).join('')}
+          <th style="background:#fffbe6;min-width:36px">合計</th>
+        </tr></thead>
+        <tbody>
+        ${prodList.map(([code,{name,unit,qtys}]) => {
+          const total = shopList.reduce((s,sh) => s+(qtys[sh.code]||0),0);
+          return `<tr><td style="text-align:left;font-weight:500">${name}</td><td style="color:#888">${unit}</td>${shopList.map(sh=>{const q=qtys[sh.code]||0;return`<td style="color:${q>0?'#111':'#ddd'}">${q>0?q:'—'}</td>`}).join('')}<td style="font-weight:700;background:#fffbe6">${total}</td></tr>`;
+        }).join('')}
+        </tbody>
+        <tfoot><tr style="background:#e8e8e8">
+          <td style="font-weight:700">合計</td><td></td>
+          ${shopList.map(sh=>{const s=prodList.reduce((t,[,{qtys}])=>t+(qtys[sh.code]||0),0);return`<td style="font-weight:700">${s>0?s:'—'}</td>`}).join('')}
+          <td style="font-weight:700;background:#ffe066">${prodList.reduce((t,[,{qtys}])=>t+shopList.reduce((s,sh)=>s+(qtys[sh.code]||0),0),0)}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+  });
+
+  win.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>ピッキングリスト</title><style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}
+    @page{margin:6mm;size:B4 landscape}
+    body{background:#fff;font-size:11px}
+    .section{margin-bottom:16px;page-break-after:always}
+    .section:last-child{page-break-after:auto}
+    .stitle{font-size:13px;font-weight:700;padding:4px 10px;background:#e8f0fe;border-radius:4px;color:#1a56db;margin-bottom:6px}
+    table{border-collapse:collapse;width:100%;table-layout:fixed}
+    th,td{border:1px solid #888;padding:3px 4px;word-break:break-all;line-height:1.3;vertical-align:middle;text-align:center}
+    th{background:#e8e8e8;font-weight:600}
+  </style></head><body>${sections}
+  <script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.close();
+}
+
+/* ── STORE LABELS — 1 label per product per store ── */
+function renderLabels() {
+  const dateFilter = document.getElementById('label-date')?.value || 'ALL';
+  const coFilter = document.getElementById('label-co')?.value || 'ALL';
+  const { data } = buildOrderData(dateFilter);
+  const el = document.getElementById('label-content');
+  if (!el) return;
+
+  el.innerHTML = '';
+  const allDates = Object.keys(data).sort();
+  if (!allDates.length) {
+    el.innerHTML = '<div style="padding:20px;color:#999">データがありません</div>';
+    return;
+  }
+
+  // Order: date → co → shop → product (1 card per product)
+  allDates.forEach(date => {
+    const dateData = data[date];
+    Object.entries(dateData).sort(([a],[b]) => a.localeCompare(b,'ja')).forEach(([co, shops_]) => {
+      if (coFilter !== 'ALL' && co !== coFilter) return;
+      Object.entries(shops_).sort(([,a],[,b]) => a.shopName.localeCompare(b.shopName,'ja')).forEach(([sc, shopData]) => {
+        shopData.items.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'label-card-print';
+          card.style.cssText = 'width:46mm;height:85mm;border:2px solid #222;border-radius:4px;padding:5px 8px;overflow:hidden;display:flex;flex-direction:column;background:#fff;font-family:sans-serif;flex-shrink:0';
+          const [yr,mo,dy] = date.split('-');
+          const dateJa = `${yr}年${parseInt(mo)}月${parseInt(dy)}日`;
+          card.innerHTML = `
+            <div class="lc-date">納品日：${dateJa}</div>
+            <div class="lc-co-label">会社名：</div>
+            <div class="lc-co-val">　${co}</div>
+            <div class="lc-store-label">店名：</div>
+            <div class="lc-store-val">　${shopData.shopName}</div>
+            <div class="lc-prod-label">商品名：</div>
+            <div class="lc-prod-val">　${item.name}</div>
+            <div class="lc-qty-row"><span class="lc-qty">${item.qty}</span><span class="lc-unit">${item.unit}</span></div>`;
+          el.appendChild(card);
+        });
+      });
+    });
+  });
+}
+
+function printLabels() {
+  const dateFilter = document.getElementById('label-date')?.value || 'ALL';
+  const coFilter = document.getElementById('label-co')?.value || 'ALL';
+  const { data } = buildOrderData(dateFilter);
+  const allDates = Object.keys(data).sort();
+  if (!allDates.length) { toast('データがありません', 'warn'); return; }
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('ポップアップがブロックされています'); return; }
+
+  let labels = '';
+  // Order: date → co → shop → product
+  allDates.forEach(date => {
+    const dateData = data[date];
+    Object.entries(dateData).sort(([a],[b]) => a.localeCompare(b,'ja')).forEach(([co, shops_]) => {
+      if (coFilter !== 'ALL' && co !== coFilter) return;
+      Object.entries(shops_).sort(([,a],[,b]) => a.shopName.localeCompare(b.shopName,'ja')).forEach(([sc, shopData]) => {
+        shopData.items.forEach(item => {
+          const [yr2,mo2,dy2] = date.split('-');
+          const dateJa2 = `${yr2}年${parseInt(mo2)}月${parseInt(dy2)}日`;
+          labels += `<div class="label">
+            <div class="lc-date">納品日：${dateJa2}</div>
+            <div class="lc-co-label">会社名：</div>
+            <div class="lc-co-val">　${co}</div>
+            <div class="lc-store-label">店名：</div>
+            <div class="lc-store-val">　${shopData.shopName}</div>
+            <div class="lc-prod-label">商品名：</div>
+            <div class="lc-prod-val">　${item.name}</div>
+            <div class="lc-qty-row"><span class="lc-qty">${item.qty}</span><span class="lc-unit">${item.unit}</span></div>
+          </div>`;
+        });
+      });
+    });
+  });
+
+  win.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>店舗ラベル</title><style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}
+    @page{size:85mm 46mm;margin:0}
+    body{background:#fff}
+    .label{width:85mm;height:46mm;border:2px solid #222;border-radius:4px;padding:4px 8px;page-break-after:always;break-after:page;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+    .lc-date{font-size:10px;font-weight:700;color:#111;border-bottom:1.5px solid #222;padding-bottom:2px;margin-bottom:1px}
+    .lc-co-label{font-size:9px;color:#555;font-weight:600;line-height:1.2}
+    .lc-co-val{font-size:18px;font-weight:800;color:#111;padding-left:6px;line-height:1.2}
+    .lc-store-label{font-size:9px;color:#555;font-weight:600;line-height:1.2}
+    .lc-store-val{font-size:18px;font-weight:800;color:#111;padding-left:6px;line-height:1.2}
+    .lc-prod-label{font-size:9px;color:#555;font-weight:600;line-height:1.2}
+    .lc-prod-val{font-size:11px;font-weight:700;color:#1a56db;padding-left:6px;line-height:1.2}
+    .lc-qty-row{display:flex;align-items:baseline;gap:5px;margin-top:3px;border-top:1px solid #ddd;padding-top:2px}
+    .lc-qty{font-size:20px;font-weight:900;color:#111;line-height:1}
+    .lc-unit{font-size:11px;font-weight:700;color:#444;line-height:1}
+  </style></head><body>${labels || '<div style="padding:20px;color:#999">データがありません</div>'}
+  <script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.close();
+}
+
+/* ── GROSS TABLE ── */
+function renderGross() {
+  const dateFilter = document.getElementById('gross-date')?.value || 'ALL';
+  const { data } = buildOrderData(dateFilter);
+  const el = document.getElementById('gross-content');
+  if (!el) return;
+
+  const allDates = Object.keys(data).sort();
+  if (!allDates.length) { el.innerHTML = '<div style="padding:20px;color:#999;text-align:center">データがありません</div>'; return; }
+
+  // Build: rows=products, cols=dates
+  const itemMap = {}; // { prodCode: { name, unit, dates: {date: qty} } }
+  allDates.forEach(date => {
+    if (dateFilter !== 'ALL' && date !== dateFilter) return;
+    Object.values(data[date]).forEach(shops_ => {
+      Object.values(shops_).forEach(shopData => {
+        shopData.items.forEach(item => {
+          if (!itemMap[item.code]) itemMap[item.code] = { name: item.name, unit: item.unit, dates: {} };
+          itemMap[item.code].dates[date] = (itemMap[item.code].dates[date] || 0) + item.qty;
+        });
+      });
+    });
+  });
+
+  const filteredDates = dateFilter === 'ALL' ? allDates : [dateFilter];
+  const prodList = Object.entries(itemMap).filter(([,v]) => filteredDates.some(d => (v.dates[d] || 0) > 0));
+
+  if (!prodList.length) { el.innerHTML = '<div style="padding:20px;color:#999;text-align:center">データがありません</div>'; return; }
+
+  let html = `<table class="gross-table">
+    <thead><tr>
+      <th class="name-col" style="text-align:left">商品名</th>
+      <th>単位</th>
+      ${filteredDates.map(d => `<th>${d}</th>`).join('')}
+      <th class="total-col">合計</th>
+    </tr></thead>
+    <tbody>`;
+
+  prodList.forEach(([code, {name, unit, dates}], ri) => {
+    const total = filteredDates.reduce((s, d) => s + (dates[d] || 0), 0);
+    html += `<tr style="background:${ri%2===0?'#fff':'#f9f9f9'}">
+      <td class="name-col">${name}</td>
+      <td style="color:#888;font-size:11px">${unit}</td>
+      ${filteredDates.map(d => {const v=dates[d]||0;return`<td style="color:${v>0?'#111':'#ccc'}">${v>0?v:'—'}</td>`}).join('')}
+      <td class="total-col">${total}</td>
+    </tr>`;
+  });
+
+  // Footer
+  html += `<tr style="background:#e8e8e8;font-weight:700">
+    <td class="name-col">合計</td><td></td>
+    ${filteredDates.map(d => {const s=prodList.reduce((t,[,{dates}])=>t+(dates[d]||0),0);return`<td>${s>0?s:'—'}</td>`}).join('')}
+    <td class="total-col">${prodList.reduce((t,[,{dates}])=>t+filteredDates.reduce((s,d)=>s+(dates[d]||0),0),0)}</td>
+  </tr>`;
+
+  html += `</tbody></table>`;
+  el.innerHTML = html;
+}
+
+function printGross() {
+  const dateFilter = document.getElementById('gross-date')?.value || 'ALL';
+  const { data } = buildOrderData(dateFilter);
+  const allDates = Object.keys(data).sort();
+  if (!allDates.length) { toast('データがありません', 'warn'); return; }
+
+  const itemMap = {};
+  allDates.forEach(date => {
+    Object.values(data[date]).forEach(shops_ => {
+      Object.values(shops_).forEach(shopData => {
+        shopData.items.forEach(item => {
+          if (!itemMap[item.code]) itemMap[item.code] = { name: item.name, unit: item.unit, dates: {} };
+          itemMap[item.code].dates[date] = (itemMap[item.code].dates[date] || 0) + item.qty;
+        });
+      });
+    });
+  });
+
+  const filteredDates = dateFilter === 'ALL' ? allDates : [dateFilter];
+  const prodList = Object.entries(itemMap).filter(([,v]) => filteredDates.some(d => (v.dates[d] || 0) > 0));
+  if (!prodList.length) { toast('データがありません', 'warn'); return; }
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('ポップアップがブロックされています'); return; }
+
+  const headerCells = `<th style="text-align:left;min-width:120px">商品名</th><th>単位</th>` +
+    filteredDates.map(d => `<th>${d}</th>`).join('') +
+    `<th style="background:#d0e4ff">合計</th>`;
+  const bodyRows = prodList.map(([,{name,unit,dates}], ri) => {
+    const total = filteredDates.reduce((s,d) => s+(dates[d]||0), 0);
+    return `<tr style="background:${ri%2===0?'#fff':'#f9f9f9'}">
+      <td style="text-align:left;font-weight:500">${name}</td>
+      <td style="color:#888">${unit}</td>
+      ${filteredDates.map(d=>{const v=dates[d]||0;return`<td style="color:${v>0?'#111':'#ccc'};text-align:center">${v>0?v:'—'}</td>`}).join('')}
+      <td style="font-weight:700;background:#e8f0fe;text-align:center">${total}</td>
+    </tr>`;
+  }).join('');
+  const footCells = `<td style="font-weight:700;text-align:left">合計</td><td></td>` +
+    filteredDates.map(d=>{const s=prodList.reduce((t,[,{dates}])=>t+(dates[d]||0),0);return`<td style="font-weight:700;text-align:center">${s>0?s:'—'}</td>`}).join('') +
+    `<td style="font-weight:700;background:#ffe066;text-align:center">${prodList.reduce((t,[,{dates}])=>t+filteredDates.reduce((s,d)=>s+(dates[d]||0),0),0)}</td>`;
+
+  win.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>出荷量グロス表</title><style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:sans-serif}
+    @page{margin:6mm;size:B4 landscape}
+    body{background:#fff;font-size:11px}
+    table{border-collapse:collapse;width:100%;table-layout:auto}
+    th,td{border:1px solid #888;padding:3px 5px;word-break:break-all;line-height:1.3;vertical-align:middle}
+    th{background:#e8e8e8;font-weight:600;text-align:center}
+  </style></head><body>
+  <table><thead><tr>${headerCells}</tr></thead>
+  <tbody>${bodyRows}</tbody>
+  <tfoot><tr style="background:#e8e8e8">${footCells}</tr></tfoot>
+  </table>
+  <script>window.onload=function(){window.print()}<\/script></body></html>`);
+  win.document.close();
+}
+
+
+
+/* init */
+updWkLbl();
+renderCompanyBtns();
+document.getElementById('gasurl').value=gasUrl;
+loadAll();
+</script>
+</body>
+</html>
