@@ -295,9 +295,49 @@ input[type=text]:focus,select:focus{outline:none;border-color:#D85A30}
 .gross-table tfoot td{background:#f0f0f0;font-weight:700}
 .gross-table .total-col{background:#e8f0fe;font-weight:700}
 
+
+/* ── LOGIN SCREEN ── */
+.login-overlay{display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);z-index:9999;align-items:center;justify-content:center}
+.login-overlay.hidden{display:none}
+.login-card{background:#fff;border-radius:16px;padding:40px 36px;width:360px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center}
+.login-logo{font-size:18px;font-weight:700;color:#C0482A;margin-bottom:4px}
+.login-logo span{color:#1565C0}
+.login-title{font-size:22px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.login-sub{font-size:12px;color:#888;margin-bottom:28px}
+.login-field{margin-bottom:16px;text-align:left}
+.login-field label{display:block;font-size:12px;font-weight:600;color:#555;margin-bottom:4px}
+.login-field input{width:100%;height:40px;border:1.5px solid #ddd;border-radius:8px;padding:0 12px;font-size:14px;transition:.2s;box-sizing:border-box}
+.login-field input:focus{outline:none;border-color:#1565C0;box-shadow:0 0 0 3px rgba(21,101,192,.1)}
+.login-btn{width:100%;height:42px;background:#C0482A;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;margin-top:8px}
+.login-btn:hover{background:#993C1D}
+.login-btn:active{transform:scale(.98)}
+.login-error{background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1;border-radius:6px;padding:8px 12px;font-size:12px;margin-top:12px;display:none}
+.login-error.show{display:block}
+.login-footer{font-size:11px;color:#bbb;margin-top:20px}
+
 </style>
 </head>
 <body>
+
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">発注 <span>⇒</span> ピッキング</div>
+    <div class="login-title">ログイン</div>
+    <div class="login-sub">システムを使用するにはログインが必要です</div>
+    <div class="login-field">
+      <label>ユーザー名</label>
+      <input type="text" id="login-user" placeholder="ユーザー名を入力" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()">
+    </div>
+    <div class="login-field">
+      <label>パスワード</label>
+      <input type="password" id="login-pass" placeholder="パスワードを入力" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">ログイン</button>
+    <div class="login-error" id="login-error">ユーザー名またはパスワードが正しくありません</div>
+    <div class="login-footer">© 発注⇒ピッキング システム</div>
+  </div>
+</div>
+
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 <div class="app">
 <div class="sidebar">
@@ -1226,11 +1266,65 @@ function printGross() {
 
 
 
+
+/* ── LOGIN ── */
+// アカウント設定: { username: 'パスワード' }
+// パスワードを変更したい場合はここを編集してください
+const ACCOUNTS = {
+  'ssb-system': 'ssb123456',
+};
+
+function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const err  = document.getElementById('login-error');
+
+  if (ACCOUNTS[user] && ACCOUNTS[user] === pass) {
+    // ログイン成功
+    sessionStorage.setItem('login_user', user);
+    document.getElementById('login-overlay').classList.add('hidden');
+    err.classList.remove('show');
+    loadAll(); // データ読み込み開始
+  } else {
+    err.classList.add('show');
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+    // 3回失敗で5秒ロック
+    const btn = document.querySelector('.login-btn');
+    btn.disabled = true;
+    btn.textContent = '認証失敗...';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'ログイン';
+    }, 2000);
+  }
+}
+
+function checkLogin() {
+  const user = sessionStorage.getItem('login_user');
+  if (user && ACCOUNTS[user]) {
+    // セッションあり → そのままログイン済み
+    document.getElementById('login-overlay').classList.add('hidden');
+    return true;
+  }
+  // ログイン画面を表示、loadAll()は呼ばない
+  return false;
+}
+
+
 /* init */
 updWkLbl();
 renderCompanyBtns();
 document.getElementById('gasurl').value=gasUrl;
-loadAll();
+// ログイン確認してからデータ読み込み
+if (!checkLogin()) {
+  // ログイン画面を表示（loadAllはdoLogin後に呼ばれる）
+  setTimeout(() => {
+    document.getElementById('login-user').focus();
+  }, 100);
+} else {
+  loadAll();
+}
 </script>
 </body>
 </html>
